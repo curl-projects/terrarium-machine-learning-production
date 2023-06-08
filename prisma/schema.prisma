@@ -1,63 +1,22 @@
 generator client {
   provider = "prisma-client-py"
+  recursive_type_depth = 5
+  previewFeatures = ["filteredRelationCount"]
   // binaryTargets=["debian-openssl-1.1.x"]
-  // output="/root/prisma/generated/client"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "cockroachdb"
   url      = "postgresql://finn:Q5vyFLM0QYqlR0WrhYc7HQ@terrarium-6571.7tt.cockroachlabs.cloud:26257/defaultdb?sslmode=verify-full"
 }
 
-model DiscordMessage {
-  id             Int    @id @default(autoincrement())
-  threadId       String
-  messageUser    String
-  messageContent String
-  Thread         Thread @relation(fields: [threadId], references: [ticketNumber])
-}
-
-model DiscordUser {
-  username     String     @id
-  notionAuthId String
-  NotionAuth   NotionAuth @relation(fields: [notionAuthId], references: [botId])
-}
-
-model Feature {
-  id                Int                 @id @default(autoincrement())
-  title             String
-  description       String              @default("")
-  userId            String
-  columnState       Int
-  rankState         Int
-  isSearched        Boolean             @default(false)
-  User              User                @relation(fields: [userId], references: [id])
-  FeatureRequestMap FeatureRequestMap[]
-}
-
-model FeatureRequest {
-  fr_id             String              @id
-  message_id        String
-  message           String
-  created_at        String
-  author            String
-  label             String
-  fr                String
-  kmeans_labels     Int
-  userId            String
-  User              User                @relation(fields: [userId], references: [id])
-  FeatureRequestMap FeatureRequestMap[]
-}
-
-model FeatureRequestMap {
-  featureId        Int
-  featureRequestId String
-  pinned           Boolean        @default(false)
-  cluster          Int            @default(1)
-  Feature          Feature        @relation(fields: [featureId], references: [id], onDelete: Cascade)
-  FeatureRequest   FeatureRequest @relation(fields: [featureRequestId], references: [fr_id], onDelete: Cascade)
-
-  @@id([featureId, featureRequestId])
+model User {
+  id              String           @id
+  email           String
+  discordBotAuth  Boolean          @default(false)
+  features        Feature[]
+  featureRequests FeatureRequest[]
+  notionAuths     NotionAuth[]
 }
 
 model NotionAuth {
@@ -70,24 +29,66 @@ model NotionAuth {
   workspaceName        String
   userId               String
   guildName            String?
-  User                 User          @relation(fields: [userId], references: [id])
-  DiscordUser          DiscordUser[]
+  user                 User          @relation(fields: [userId], references: [id])
+  discordUsers         DiscordUser[]
+}
+
+model DiscordUser {
+  username     String     @id
+  notionAuthId String
+  notionAuth   NotionAuth @relation(fields: [notionAuthId], references: [botId])
+}
+
+model Feature {
+  id              Int                 @id @default(sequence())
+  title           String
+  description     String @default("")
+  userId          String
+  columnState     Int
+  rankState       Int
+  isSearched      Boolean             @default(false)
+  user            User                @relation(fields: [userId], references: [id])
+  featureRequests FeatureRequestMap[]
+}
+
+model FeatureRequest {
+  fr_id         String              @id
+  message_id    String
+  message       String
+  created_at    String
+  author        String
+  label         String
+  fr            String
+  kmeans_labels Int
+  userId        String
+  user          User                @relation(fields: [userId], references: [id])
+  features      FeatureRequestMap[]
+}
+
+model FeatureRequestMap {
+  featureId        Int
+  featureRequestId String
+  pinned           Boolean        @default(false)
+  feature          Feature        @relation(fields: [featureId], references: [id], onDelete: Cascade)
+  featureRequest   FeatureRequest @relation(fields: [featureRequestId], references: [fr_id], onDelete: Cascade)
+  cluster          Int            @default(1)
+
+  @@id([featureId, featureRequestId])
 }
 
 model Thread {
-  ticketNumber   String           @id
-  threadName     String
-  createdTime    String
-  threadLink     String
-  bugOverview    String
-  DiscordMessage DiscordMessage[]
+  ticketNumber    String           @id
+  threadName      String
+  createdTime     String
+  threadLink      String
+  bugOverview     String
+  discordMessages DiscordMessage[]
 }
 
-model User {
-  id             String           @id
-  email          String
-  discordBotAuth Boolean          @default(false)
-  Feature        Feature[]
-  FeatureRequest FeatureRequest[]
-  NotionAuth     NotionAuth[]
+model DiscordMessage {
+  id             Int    @id @default(sequence())
+  threadId       String
+  messageUser    String
+  messageContent String
+  thread         Thread @relation(fields: [threadId], references: [ticketNumber])
 }
