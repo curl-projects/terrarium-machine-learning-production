@@ -24,9 +24,8 @@ def process_clusters(req_json: ClusterData):
     pinecone_vectors = load_vectors.call(search_vector, top_k=100)
     filtered_vectors = filter_vectors.call(pinecone_vectors["matches"])
     kmeans_labels = kmeans_classify.call(filtered_vectors, n_clusters=20)
-    result = write_vectors.call(kmeans_labels, filtered_vectors, req_json.terrarium_feature_id)
-    return HTMLResponse("Done!")
-
+    write_vectors.call(kmeans_labels, filtered_vectors, req_json.terrarium_feature_id)
+    
 pinecone_image = modal.Image.debian_slim().pip_install("requests")
 
 @stub.function(image=pinecone_image, secret=modal.Secret.from_name("terrarium-secrets"))
@@ -127,28 +126,13 @@ async def write_vectors(labels, filtered_vectors, feature_id):
             }
         )
         print("CLUSTER:", labels[label_idx], "featureId:", feature_id, "featureRequestId:", vector_matrix['id'][label_idx])
-        # print("UPDATED CLUSTER:", updated_cluster)
-    
-    # updated_test = await db.featurerequestmap.update(
-    #     where={
-    #         "featureId_featureRequestId": {
-    #             "featureId": 17,
-    #             "featureRequestId": '960186179192520794-6620336336560785215',
-    #         }
-    #     },
-    #     data={
-    #         'pinned': False
-    #     }
-    # )
-
-    # print("UPDATED TEST:", updated_test)
     
     updated_feature = await db.feature.update(
         where={
             "id": int(feature_id)
         },
         data={
-            "clustersGenerated": False
+            "clustersGenerated": True
         }
     )
     print("UPDATED FEATURE:", updated_feature)
@@ -156,8 +140,6 @@ async def write_vectors(labels, filtered_vectors, feature_id):
     # await batcher.commit()
 
     await db.disconnect()
-
-    return None
 
 ## TESTING FUNCTIONS ##
 
