@@ -1,13 +1,10 @@
 generator client {
   provider = "prisma-client-py"
-  recursive_type_depth = 5
-  previewFeatures = ["filteredRelationCount"]
-  // binaryTargets=["debian-openssl-1.1.x"]
 }
 
 datasource db {
   provider = "cockroachdb"
-  url      = "postgresql://finn:Q5vyFLM0QYqlR0WrhYc7HQ@terrarium-6571.7tt.cockroachlabs.cloud:26257/defaultdb?sslmode=verify-full"
+  url      = "postgresql://finn:zNvl8phi2tO_U37vWilz7g@terrarium-6571.7tt.cockroachlabs.cloud:26257/defaultdb?sslmode=verify-full"
 }
 
 model User {
@@ -40,15 +37,16 @@ model DiscordUser {
 }
 
 model Feature {
-  id              Int                 @id @default(sequence())
-  title           String
-  description     String @default("")
-  userId          String
-  columnState     Int
-  rankState       Int
-  isSearched      Boolean             @default(false)
-  user            User                @relation(fields: [userId], references: [id])
-  featureRequests FeatureRequestMap[]
+  id                Int                 @id @default(sequence())
+  title             String
+  description       String              @default("")
+  userId            String
+  columnState       Int
+  rankState         Int
+  isSearched        Boolean             @default(false)
+  clustersGenerated Boolean             @default(false)
+  user              User                @relation(fields: [userId], references: [id])
+  featureRequests   FeatureRequestMap[]
 }
 
 model FeatureRequest {
@@ -69,9 +67,9 @@ model FeatureRequestMap {
   featureId        Int
   featureRequestId String
   pinned           Boolean        @default(false)
+  cluster          Int            @default(-1)
   feature          Feature        @relation(fields: [featureId], references: [id], onDelete: Cascade)
   featureRequest   FeatureRequest @relation(fields: [featureRequestId], references: [fr_id], onDelete: Cascade)
-  cluster          Int            @default(1)
 
   @@id([featureId, featureRequestId])
 }

@@ -18,15 +18,14 @@ class ClusterData(BaseModel):
     terrarium_feature_id: int
 
 @stub.function()
-@modal.web_endpoint(method="POST")
+@modal.web_endpoint(method="POST", wait_for_response=False)
 def process_clusters(req_json: ClusterData):
     search_vector = req_json.search_vector
     pinecone_vectors = load_vectors.call(search_vector, top_k=100)
     filtered_vectors = filter_vectors.call(pinecone_vectors["matches"])
     kmeans_labels = kmeans_classify.call(filtered_vectors, n_clusters=20)
-    write_vectors.call(kmeans_labels, filtered_vectors, req_json.terrarium_feature_id)
-
-    print("DONE!")
+    result = write_vectors.call(kmeans_labels, filtered_vectors, req_json.terrarium_feature_id)
+    return HTMLResponse("Done!")
 
 pinecone_image = modal.Image.debian_slim().pip_install("requests")
 
@@ -97,35 +96,66 @@ database_write_image = (modal.Image.debian_slim()
 @stub.function(mounts=[modal.Mount.from_local_dir("./prisma", remote_path="/root/prisma")], image=database_write_image)
 async def write_vectors(labels, filtered_vectors, feature_id):
     import subprocess
+    subprocess.run('prisma generate', shell=True)
 
-    subprocess.run('prisma generate --schema /root/prisma/schema.prisma', shell=True)
-
-    import prisma
-    import asyncio
     from prisma import Prisma
-    # from prisma.models import User
     import pandas as pd
+    from prisma.models import FeatureRequestMap
 
-    prisma = Prisma()
-    await prisma.connect()
+    print('CURRENT LOCATION:', subprocess.run("ls", shell=True))
+
+    db = Prisma(auto_register=True)
+    await db.connect()
     
     vector_matrix = pd.DataFrame(filtered_vectors)
 
+    # batcher = db.batch_()
     for label_idx in range(len(labels)):
-        updated_cluster = await prisma.featurerequestmap.update(
+        await FeatureRequestMap.prisma().update(
             where={
                 "featureId_featureRequestId": {
                     "featureId": int(feature_id),
-                    "featureRequestId": vector_matrix['id'][label_idx],
+                    "featureRequestId": str(vector_matrix['id'][label_idx]),
                 }
             },
             data={
                 "cluster": int(labels[label_idx])
+            },
+            include={
+                "feature": True,
+                "featureRequest": True
             }
         )
-        print("UPDATED CLUSTER:", updated_cluster)
+        print("CLUSTER:", labels[label_idx], "featureId:", feature_id, "featureRequestId:", vector_matrix['id'][label_idx])
+        # print("UPDATED CLUSTER:", updated_cluster)
+    
+    # updated_test = await db.featurerequestmap.update(
+    #     where={
+    #         "featureId_featureRequestId": {
+    #             "featureId": 17,
+    #             "featureRequestId": '960186179192520794-6620336336560785215',
+    #         }
+    #     },
+    #     data={
+    #         'pinned': False
+    #     }
+    # )
 
-    await prisma.disconnect()
+    # print("UPDATED TEST:", updated_test)
+    
+    updated_feature = await db.feature.update(
+        where={
+            "id": int(feature_id)
+        },
+        data={
+            "clustersGenerated": False
+        }
+    )
+    print("UPDATED FEATURE:", updated_feature)
+    
+    # await batcher.commit()
+
+    await db.disconnect()
 
     return None
 
