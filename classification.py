@@ -142,10 +142,25 @@ async def write_vectors(labels, filtered_vectors, feature_id):
     
     await batcher.commit()
 
-    async with websockets.connect(os.environ["TERRARIUM_WEBSOCKET"]) as websocket:
-        await websocket.send("Clusters Generated")
+    contact_websockets.call()
 
     await db.disconnect()
+
+websockets_image = modal.Image.debian_slim().pip_install("websockets")
+@stub.function(image=websockets_image,
+               secret=modal.Secret.from_name("terrarium-secrets"))
+async def contact_websockets():
+    import websockets
+    import asyncio
+    import json
+
+    async with websockets.connect(os.environ["TERRARIUM_WEBSOCKET"]) as ws:
+        await ws.send(json.dumps({"type": "cluster_generation", "status": "completed"}))
+
+        msg = await ws.recv()
+        print("Message:", msg)
+            
+    
 
 ## TESTING FUNCTIONS ##
 
