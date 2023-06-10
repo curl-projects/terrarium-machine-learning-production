@@ -25,7 +25,7 @@ def process_clusters(req_json: ClusterData):
     filtered_vectors = filter_vectors.call(pinecone_vectors["matches"])
     kmeans_labels = kmeans_classify.call(filtered_vectors, n_clusters=20)
     write_vectors.call(kmeans_labels, filtered_vectors, req_json.terrarium_feature_id)
-    
+
 pinecone_image = modal.Image.debian_slim().pip_install("requests")
 
 @stub.function(image=pinecone_image, secret=modal.Secret.from_name("terrarium-secrets"))
@@ -87,19 +87,22 @@ def kmeans_classify(filtered_vectors, n_clusters:int=50):
 
 database_write_image = (modal.Image.debian_slim()
                              .apt_install("curl")
-                             .pip_install("prisma", "pandas", "asyncio")
+                             .pip_install("prisma", "pandas", "asyncio", "websockets")
                              .run_commands(
                                 "curl --create-dirs -o $HOME/.postgresql/root.crt 'https://cockroachlabs.cloud/clusters/af6dfdf3-ae27-4681-bf85-18222dd35911/cert'",
                              ))
 
-@stub.function(mounts=[modal.Mount.from_local_dir("./prisma", remote_path="/root/prisma")], image=database_write_image)
+@stub.function(mounts=[modal.Mount.from_local_dir("./prisma", remote_path="/root/prisma")], 
+               image=database_write_image,
+               secret=modal.Secret.from_name("terrarium-secrets"))
 async def write_vectors(labels, filtered_vectors, feature_id):
     import subprocess
+    import websockets
+    import os
     subprocess.run('prisma generate', shell=True)
 
     from prisma import Prisma
     import pandas as pd
-    from prisma.models import FeatureRequestMap
 
     print('CURRENT LOCATION:', subprocess.run("ls", shell=True))
 
@@ -108,9 +111,9 @@ async def write_vectors(labels, filtered_vectors, feature_id):
     
     vector_matrix = pd.DataFrame(filtered_vectors)
 
-    # batcher = db.batch_()
+    batcher = db.batch_()
     for label_idx in range(len(labels)):
-        await FeatureRequestMap.prisma().update(
+        batcher.featurerequestmap.update(
             where={
                 "featureId_featureRequestId": {
                     "featureId": int(feature_id),
@@ -127,7 +130,7 @@ async def write_vectors(labels, filtered_vectors, feature_id):
         )
         print("CLUSTER:", labels[label_idx], "featureId:", feature_id, "featureRequestId:", vector_matrix['id'][label_idx])
     
-    updated_feature = await db.feature.update(
+    updated_feature = batcher.feature.update(
         where={
             "id": int(feature_id)
         },
@@ -137,7 +140,10 @@ async def write_vectors(labels, filtered_vectors, feature_id):
     )
     print("UPDATED FEATURE:", updated_feature)
     
-    # await batcher.commit()
+    await batcher.commit()
+
+    async with websockets.connect(os.environ["TERRARIUM_WEBSOCKET"]) as websocket:
+        await websocket.send("Clusters Generated")
 
     await db.disconnect()
 
@@ -186,3 +192,18 @@ def test_process_clusters():
 
     print("K MEANS LABELS:", kmeans_labels)
     return kmeans_labels
+
+test_websockets_image = modal.Image.debian_slim().pip_install("websockets")
+@stub.function(image=test_websockets_image,
+               secret=modal.Secret.from_name("terrarium-secrets"))
+async def test_websockets():
+    import websockets
+    import asyncio
+    import json
+
+    async with websockets.connect('wss://terrarium-websockets.fly.dev') as ws:
+        await ws.send(json.dumps({"Hello Finn!": "hi"}))
+
+        msg = await ws.recv()
+        print("Message:", msg)
+            
