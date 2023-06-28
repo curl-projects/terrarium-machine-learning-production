@@ -7,13 +7,26 @@ datasource db {
   url      = "postgresql://finn:zNvl8phi2tO_U37vWilz7g@terrarium-6571.7tt.cockroachlabs.cloud:26257/defaultdb?sslmode=verify-full"
 }
 
+
 model User {
   id              String           @id
   email           String
   discordBotAuth  Boolean          @default(false)
+  authorizedUsers AuthorizedUser[]
+  BaseDataset     BaseDataset[]
+  datasets        Dataset[]
   features        Feature[]
   featureRequests FeatureRequest[]
   notionAuths     NotionAuth[]
+}
+
+model AuthorizedUser {
+  authUserId Int    @id @default(sequence())
+  platform   String
+  community  String
+  username   String
+  userId     String
+  user       User   @relation(fields: [userId], references: [id])
 }
 
 model NotionAuth {
@@ -26,8 +39,8 @@ model NotionAuth {
   workspaceName        String
   userId               String
   guildName            String?
-  user                 User          @relation(fields: [userId], references: [id])
   discordUsers         DiscordUser[]
+  user                 User          @relation(fields: [userId], references: [id])
 }
 
 model DiscordUser {
@@ -44,32 +57,34 @@ model Feature {
   columnState     Int
   rankState       Int
   isSearched      Boolean             @default(false)
+  clusters        Cluster[]
   user            User                @relation(fields: [userId], references: [id])
-  Cluster         Cluster[]
+  filters         FeatureFilter[]
   featureRequests FeatureRequestMap[]
 }
 
 model FeatureRequest {
-  fr_id         String              @id
-  message_id    String
-  message       String
-  created_at    String
-  author        String
-  label         String
-  fr            String
-  kmeans_labels Int
-  userId        String
-  user          User                @relation(fields: [userId], references: [id])
-  features      FeatureRequestMap[]
+  fr_id      String              @id
+  message_id String
+  message    String
+  created_at String
+  author     String
+  fr         String
+  userId     String
+  datasetId  Int
+  dataset    Dataset             @relation(fields: [datasetId], references: [datasetId], onDelete: Cascade)
+  user       User                @relation(fields: [userId], references: [id])
+  features   FeatureRequestMap[]
 }
 
 model FeatureRequestMap {
   featureId        Int
   featureRequestId String
   pinned           Boolean        @default(false)
-  cluster          Int            @default(-1)
   clusterId        Int?
-  Cluster          Cluster?       @relation(fields: [clusterId], references: [clusterId])
+  oldCluster       Int            @default(-1)
+  score            String?
+  cluster          Cluster?       @relation(fields: [clusterId], references: [clusterId])
   feature          Feature        @relation(fields: [featureId], references: [id], onDelete: Cascade)
   featureRequest   FeatureRequest @relation(fields: [featureRequestId], references: [fr_id], onDelete: Cascade)
 
@@ -94,10 +109,63 @@ model DiscordMessage {
 }
 
 model Cluster {
-  clusterId         Int                 @id @default(sequence())
-  featureId         Int?
-  internalClusterId Int @default(-1)
-  description String @default("")
-  feature           Feature?             @relation(fields: [featureId], references: [id], onDelete: Cascade)
+  clusterId          Int                 @id @default(sequence())
+  featureId          Int?
+  internalClusterId  Int                 @default(-1)
+  description        String              @default("")
+  type               String              @default("localKMeans")
+  feature            Feature?            @relation(fields: [featureId], references: [id], onDelete: Cascade)
+  clusterTags        ClusterTag[]
   featureRequestMaps FeatureRequestMap[]
+}
+
+model ClusterTag {
+  clusterTagId Int     @id @default(sequence())
+  clusterId    Int
+  tagContent   String
+  cluster      Cluster @relation(fields: [clusterId], references: [clusterId], onDelete: Cascade)
+}
+
+model Dataset {
+  datasetId       Int              @id @default(sequence())
+  uniqueFileName  String
+  size            String?
+  status          String           @default("unprocessed")
+  userId          String
+  baseDatasetId   Int?
+  baseDataset     BaseDataset?     @relation(fields: [baseDatasetId], references: [baseDatasetId])
+  user            User             @relation(fields: [userId], references: [id])
+  datasetMapping  DatasetMapping?
+  featureRequests FeatureRequest[]
+}
+
+model DatasetMapping {
+  datasetMappingId Int     @id @default(sequence())
+  datasetId        Int     @unique
+  text             String?
+  author           String?
+  id               String?
+  createdAt        String?
+  searchFor        String?
+  dataset          Dataset @relation(fields: [datasetId], references: [datasetId], onDelete: Cascade)
+}
+
+model FeatureFilter {
+  filterId    Int     @id @default(sequence())
+  type        String
+  dateVariant String?
+  date        String?
+  featureId   Int
+  author      String?
+  feature     Feature @relation(fields: [featureId], references: [id])
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model BaseDataset {
+  baseDatasetId  Int       @id @default(sequence())
+  uniqueFileName String
+  userId         String
+  origin         String?
+  user           User      @relation(fields: [userId], references: [id])
+  dataset        Dataset[]
 }
